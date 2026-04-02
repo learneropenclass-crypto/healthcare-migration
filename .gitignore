@@ -1,0 +1,25 @@
+# Environnement
+.env
+*.env
+
+# Données sensibles
+data/
+*.json
+*.csv
+
+# Logs
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Docker
+.docker/
+
+# OS
+.DS_Store
+Thumbs.db

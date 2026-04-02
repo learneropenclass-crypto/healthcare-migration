@@ -1,0 +1,52 @@
+version: "3.9"
+
+services:
+
+  # ── MongoDB local (optionnel – utilisé si pas d'Atlas) ─────────────────────
+  mongo:
+    image: mongo:6
+    container_name: healthcare_mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: adminpassword
+      MONGO_INITDB_DATABASE: healthcare-dataset
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+      - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Script de migration ─────────────────────────────────────────────────────
+  migration:
+    build:
+      context: .
+      dockerfile: Dockerfile.migration
+    container_name: healthcare_migration
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      # Pour MongoDB local :
+      MONGO_URI: mongodb://admin:adminpassword@mongo:27017/
+      # Pour MongoDB Atlas (décommente et remplis) :
+      # MONGO_URI: mongodb+srv://monuser:monpassword123@ac-elqsyw9.ntfl3qv.mongodb.net/
+      DB_NAME:   healthcare-dataset
+      COLL_NAME: healthcare-dataset
+      DATA_FILE: /data/healthcare_dataset.json
+      BATCH_SIZE: "500"
+      READER_PASSWORD:  ReaderPass123!
+      WRITER_PASSWORD:  WriterPass123!
+      DBADMIN_PASSWORD: AdminPass123!
+    volumes:
+      - ./data:/data:ro
+    restart: "no"
+
+volumes:
+  mongo_data:
+    driver: local
