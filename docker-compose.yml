@@ -1,21 +1,40 @@
 version: "3.9"
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Healthcare Migration — Docker Compose
+# ══════════════════════════════════════════════════════════════════════════════
+# Usage :
+#   1. Copie .env.example en .env et remplis tes valeurs
+#   2. Place healthcare_dataset.json dans ./data/
+#   3. Lance : docker compose up --build
+#
+# Variables d'environnement requises dans .env :
+#   MONGO_ROOT_USER      — Utilisateur root MongoDB local
+#   MONGO_ROOT_PASSWORD  — Mot de passe root MongoDB local
+#   MONGO_URI            — URI de connexion (local ou Atlas)
+#   READER_PASSWORD      — Mot de passe data_reader
+#   WRITER_PASSWORD      — Mot de passe data_writer
+#   DBADMIN_PASSWORD     — Mot de passe data_admin
+# ══════════════════════════════════════════════════════════════════════════════
+
 services:
 
-  # ── MongoDB local (optionnel – utilisé si pas d'Atlas) ─────────────────────
+  # ── MongoDB local ───────────────────────────────────────────────────────────
   mongo:
     image: mongo:6
     container_name: healthcare_mongo
     restart: unless-stopped
     environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: adminpassword
-      MONGO_INITDB_DATABASE: healthcare-dataset
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-adminpassword}
+      MONGO_INITDB_DATABASE: ${DB_NAME:-healthcare-dataset}
     ports:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
       - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+    networks:
+      - healthcare_network
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
@@ -32,21 +51,49 @@ services:
       mongo:
         condition: service_healthy
     environment:
-      # Pour MongoDB local :
-      MONGO_URI: mongodb://admin:adminpassword@mongo:27017/
-      # Pour MongoDB Atlas (décommente et remplis) :
-      # MONGO_URI: mongodb+srv://monuser:monpassword123@ac-elqsyw9.ntfl3qv.mongodb.net/
-      DB_NAME:   healthcare-dataset
-      COLL_NAME: healthcare-dataset
-      DATA_FILE: /data/healthcare_dataset.json
-      BATCH_SIZE: "500"
-      READER_PASSWORD:  ReaderPass123!
-      WRITER_PASSWORD:  WriterPass123!
-      DBADMIN_PASSWORD: AdminPass123!
+      # URI MongoDB — local par défaut, Atlas si défini dans .env
+      MONGO_URI:        ${MONGO_URI:-mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD:-adminpassword}@mongo:27017/}
+      DB_NAME:          ${DB_NAME:-healthcare-dataset}
+      COLL_NAME:        ${COLL_NAME:-healthcare-dataset}
+      DATA_FILE:        ${DATA_FILE:-/data/healthcare_dataset.json}
+      BATCH_SIZE:       ${BATCH_SIZE:-500}
+      # Mots de passe des rôles — définis dans .env
+      READER_PASSWORD:  ${READER_PASSWORD:-ReaderPass123!}
+      WRITER_PASSWORD:  ${WRITER_PASSWORD:-WriterPass123!}
+      DBADMIN_PASSWORD: ${DBADMIN_PASSWORD:-AdminPass123!}
     volumes:
       - ./data:/data:ro
+    networks:
+      - healthcare_network
     restart: "no"
 
+  # ── Script de démonstration / tests ────────────────────────────────────────
+  demo:
+    build:
+      context: .
+      dockerfile: Dockerfile.migration
+    container_name: healthcare_demo
+    command: ["python", "demo.py"]
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGO_URI: ${MONGO_URI:-mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD:-adminpassword}@mongo:27017/}
+      DB_NAME:   ${DB_NAME:-healthcare-dataset}
+      COLL_NAME: ${COLL_NAME:-healthcare-dataset}
+    networks:
+      - healthcare_network
+    restart: "no"
+    profiles:
+      - demo
+
+# ── Volumes persistants ─────────────────────────────────────────────────────
 volumes:
   mongo_data:
     driver: local
+
+# ── Réseau interne inter-conteneurs ────────────────────────────────────────
+networks:
+  healthcare_network:
+    driver: bridge
+    name: healthcare_network
